@@ -1,0 +1,7 @@
+[project]
+name = "rpi-barcode-scanner"
+version = "0.1.0"
+description = "Raspberry Pi Zero 2 Optical Barcode Scanner"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = []

@@ -1,0 +1,44 @@
+device:
+  led:
+    pin: 21
+    count: 16
+  buzzer:
+    pin: 19
+  display:
+    type: "st7789.ST7789"
+    cs: "CE0"
+    dc: "D25"
+    reset: "D24"
+    width: 240
+    height: 240
+    rotation: 180
+    x_offset: 0
+    y_offset: 80
+    baudrate: 60000000
+  encoder:
+    pin_a: 17
+    pin_b: 18
+    button:
+      pin: 27
+      bounce_time: 0.02
+      hold_time: 0.5
+      pull_up: true
+  trigger:
+    pin: 20
+    bounce_time: 0.02
+    pull_up: true
+  camera:
+    resolution: [1920, 1080]
+
+hid:
+  udc: "3f980000.usb"
+  path: "/dev/hidg0"
+
+gui:
+  toolbar_height: 30
+  toolbar_font:
+    size: 11
+    name: "DejaVuSansBold.ttf"
+  regular_font:
+    size: 18
+    name: "DejaVuSans.ttf"
