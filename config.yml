@@ -38,7 +38,14 @@ gui:
   toolbar_height: 30
   toolbar_font:
     size: 11
-    name: "DejaVuSansBold.ttf"
+    name: "DejaVuSans.ttf"
   regular_font:
     size: 18
     name: "DejaVuSans.ttf"
+
+vnc:
+  enable: True
+  port: 5900
+  bind: "0.0.0.0"
+  password: ""
+  title: "VNC Server"

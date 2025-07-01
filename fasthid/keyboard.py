@@ -20,7 +20,6 @@ class LEDState(TypedDict):
 
 
 class Keyboard:
-
     def __init__(self, dev=defaults.KEYBOARD_PATH) -> None:
         if not hasattr(dev, "write"):  # check if file like object
             self.dev = open(dev, "ab+")

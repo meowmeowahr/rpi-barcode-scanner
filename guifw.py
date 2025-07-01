@@ -1,6 +1,7 @@
 import importlib
 import os
 import pkgutil
+import socket
 import sys
 import threading
 import time
@@ -17,7 +18,6 @@ from gpiozero.pins.rpigpio import RPiGPIOFactory
 from picamera2 import Picamera2
 from pyzbar.pyzbar import decode
 import neopixel
-import board
 import elevate
 import queue
 import yaml
@@ -26,6 +26,8 @@ from fasthid import Keyboard
 from fasthid.hid.read import read_udc_gadget_suspended
 
 from settings import FloatSetting, GroupSetting, IntSetting, StringOptionSetting
+from vnc.vncserver import VNCClientThread, VNCConfig
+
 
 # UI States
 class UIState(Enum):
@@ -36,14 +38,18 @@ class UIState(Enum):
     SETTINGS = "SETTINGS"
     NULL = "NULL"
 
+
 def is_root():
     return os.getuid() == 0
+
 
 # GUI Class
 class ScannerGui:
     def __init__(self):
         # Parse args
-        parser = argparse.ArgumentParser(description="Raspberry Pi Optical Barcode Scanner with HID")
+        parser = argparse.ArgumentParser(
+            description="Raspberry Pi Optical Barcode Scanner with HID"
+        )
         parser.add_argument(
             "--verbose",
             action="store_true",
@@ -90,7 +96,7 @@ class ScannerGui:
         # Load config
         with open(args.config, "r") as f:
             self.config = yaml.safe_load(f)
-            
+
         self.device_config = self.config.get("device", {})
         self.hid_config = self.config.get("hid", {})
         self.gui_config = self.config.get("gui", {})
@@ -101,10 +107,11 @@ class ScannerGui:
         self.encoder_config = self.device_config.get("encoder", {})
         self.trigger_config = self.device_config.get("trigger", {})
         self.camera_config = self.device_config.get("camera", {})
+        self.vnc_config = self.device_config.get("vnc", {})
 
         self.led_pin = self.led_config.get("pin", 21)
         self.led_count = self.led_config.get("count", 16)
-        
+
         self.buzzer_pin = self.buzzer_config.get("pin", 19)
 
         self.display_type = self.display_config.get("type", "st7789.ST7789")
@@ -122,7 +129,9 @@ class ScannerGui:
         self.encoder_pin_b = self.encoder_config.get("pin_b", 18)
         self.encoder_button_config = self.encoder_config.get("button", {})
         self.encoder_button_pin = self.encoder_button_config.get("pin", 27)
-        self.encoder_button_bounce_time = self.encoder_button_config.get("bounce_time", 0.02)
+        self.encoder_button_bounce_time = self.encoder_button_config.get(
+            "bounce_time", 0.02
+        )
         self.encoder_button_hold_time = self.encoder_button_config.get("hold_time", 0.5)
         self.encoder_button_pull_up = self.encoder_button_config.get("pull_up", True)
 
@@ -142,8 +151,19 @@ class ScannerGui:
         self.regular_font_size = self.regular_font_config.get("size", 18)
         self.regular_font_name = self.regular_font_config.get("name", "DejaVuSans.ttf")
 
+        self.vnc_enable = self.vnc_config.get("enable", True)
+        self.vnc_port = self.vnc_config.get("port", 5900)
+        self.vnc_bind = self.vnc_config.get("bind", "0.0.0.0")
+        self.vnc_password = self.vnc_config.get("password", "")
+        self.vnc_title = self.vnc_config.get("title", "Raspberry Pi Barcode Scanner")
+
+        if self.vnc_enable and not self.vnc_password:
+            logger.warning("VNC authentication is DISABLED")
+
         if "udc" not in self.hid_config:
-            logger.warning("No UDC configured in HID settings, using default '3f980000.usb', the default will not work on all systems, please check your UDC address in /sys/class/udc/")
+            logger.warning(
+                "No UDC configured in HID settings, using default '3f980000.usb', the default will not work on all systems, please check your UDC address in /sys/class/udc/"
+            )
         self.hid_udc = self.hid_config.get("udc", "3f980000.usb")
         self.hid_path = self.hid_config.get("path", "/dev/hidg0")
 
@@ -154,24 +174,40 @@ class ScannerGui:
         logger.debug("SPI initialized")
         # Import display library
         try:
-            display_module = importlib.import_module(f"adafruit_rgb_display.{self.display_type.split('.')[0]}")
+            display_module = importlib.import_module(
+                f"adafruit_rgb_display.{self.display_type.split('.')[0]}"
+            )
         except ImportError as e:
-            logger.error(f"Failed to import display module: {e}. Please ensure the adafruit_rgb_display library is installed.")
-            logger.error(f"Possible modules: {(pkg.name for pkg in pkgutil.iter_modules(importlib.import_module('adafruit_rgb_display').__path__) if pkg.name != 'rgb')}")
+            logger.error(
+                f"Failed to import display module: {e}. Please ensure the adafruit_rgb_display library is installed."
+            )
+            logger.error(
+                f"Possible modules: {(pkg.name for pkg in pkgutil.iter_modules(importlib.import_module('adafruit_rgb_display').__path__) if pkg.name != 'rgb')}"
+            )
             sys.exit(1)
-        if not hasattr(display_module, self.display_type.split('.')[1]):
-            logger.error(f"Display type {self.display_type} not found in adafruit_rgb_display.{self.display_type.split('.')[0]}. Please check your configuration.")
+        if not hasattr(display_module, self.display_type.split(".")[1]):
+            logger.error(
+                f"Display type {self.display_type} not found in adafruit_rgb_display.{self.display_type.split('.')[0]}. Please check your configuration."
+            )
             sys.exit(1)
         if not hasattr(board, f"{self.display_cs}"):
-            logger.error(f"Display CS pin {self.display_cs} not found on in `CircuitPython:board`. Please check your configuration.")
+            logger.error(
+                f"Display CS pin {self.display_cs} not found on in `CircuitPython:board`. Please check your configuration."
+            )
             sys.exit(1)
         if not hasattr(board, f"{self.display_dc}"):
-            logger.error(f"Display DC pin {self.display_dc} not found on in `CircuitPython:board`. Please check your configuration.")
+            logger.error(
+                f"Display DC pin {self.display_dc} not found on in `CircuitPython:board`. Please check your configuration."
+            )
             sys.exit(1)
         if not hasattr(board, f"{self.display_reset}"):
-            logger.error(f"Display reset pin {self.display_reset} not found on in `CircuitPython:board`. Please check your configuration.")
+            logger.error(
+                f"Display reset pin {self.display_reset} not found on in `CircuitPython:board`. Please check your configuration."
+            )
             sys.exit(1)
-        self.display: DisplaySPI = getattr(display_module, self.display_type.split('.')[1])(
+        self.display: DisplaySPI = getattr(
+            display_module, self.display_type.split(".")[1]
+        )(
             spi,
             cs=digitalio.DigitalInOut(getattr(board, f"{self.display_cs}")),
             dc=digitalio.DigitalInOut(getattr(board, f"{self.display_dc}")),
@@ -188,25 +224,47 @@ class ScannerGui:
         # Encoder and button setup
         self.encoder = RotaryEncoder(self.encoder_pin_a, self.encoder_pin_b)
         self.encoder.when_rotated = self.on_encoder_turn
-        self.encoder_button = Button(self.encoder_button_pin, pull_up=self.encoder_button_pull_up, bounce_time=self.encoder_button_bounce_time, hold_time=self.encoder_button_hold_time)
+        self.encoder_button = Button(
+            self.encoder_button_pin,
+            pull_up=self.encoder_button_pull_up,
+            bounce_time=self.encoder_button_bounce_time,
+            hold_time=self.encoder_button_hold_time,
+        )
         self.encoder_button.when_activated = self.on_button_press
         self.button_press_time = None
 
-        self.trigger_button = Button(self.trigger_button_pin, pull_up=self.trigger_button_pull_up, bounce_time=self.trigger_button_bounce_time)
+        self.trigger_button = Button(
+            self.trigger_button_pin,
+            pull_up=self.trigger_button_pull_up,
+            bounce_time=self.trigger_button_bounce_time,
+        )
         self.trigger_button.when_activated = self.on_trigger_press
         self.trigger_button.when_deactivated = self.on_trigger_release
 
-        self.buzzer = PWMOutputDevice(self.buzzer_pin, pin_factory=RPiGPIOFactory(), frequency=440, active_high=True, initial_value=0)
+        self.buzzer = PWMOutputDevice(
+            self.buzzer_pin,
+            pin_factory=RPiGPIOFactory(),
+            frequency=440,
+            active_high=True,
+            initial_value=0,
+        )
 
         logger.debug("Encoder and button initialized")
-        
+
         if not hasattr(board, f"D{self.led_pin}"):
-            logger.error(f"LED pin D{self.led_pin} not found on in `CircuitPython:board`. Please check your configuration.")
+            logger.error(
+                f"LED pin D{self.led_pin} not found on in `CircuitPython:board`. Please check your configuration."
+            )
             sys.exit(1)
-        self.led = neopixel.NeoPixel(getattr(board, f"D{self.led_pin}"), self.led_count, brightness=0.2, auto_write=False)
+        self.led = neopixel.NeoPixel(
+            getattr(board, f"D{self.led_pin}"),
+            self.led_count,
+            brightness=0.2,
+            auto_write=False,
+        )
         self.led_rgb = [0, 0, 0]
         logger.debug("Led initialized")
-        
+
         self.picam2 = Picamera2()
         config = self.picam2.create_preview_configuration(
             main={"size": self.camera_res, "format": "BGR888"}
@@ -219,15 +277,15 @@ class ScannerGui:
         self.viewfinder = Image.new("RGB", (self.display.width, self.display.height))
         self.image_lock = threading.Lock()
         self.state = UIState.IDLE
-        
+
         # Init target, will be replaced when settings are loaded
         self.target_width = 100
         self.target_height = 50
 
         # Settings index for settings menu
-        self.settings_stack = [] # Navigation stack
-        self.settings_index = 0 # Current cursor
-        self.active_setting = None # Currently selected for editing
+        self.settings_stack = []  # Navigation stack
+        self.settings_index = 0  # Current cursor
+        self.active_setting = None  # Currently selected for editing
 
         self.barcodes = []
 
@@ -244,7 +302,7 @@ class ScannerGui:
                 options=["USB", "NONE"],
                 default_value="USB",
                 value="USB",
-                apply_callback=self.apply_connection
+                apply_callback=self.apply_connection,
             ),
             FloatSetting(
                 id="brightness",
@@ -253,7 +311,7 @@ class ScannerGui:
                 max_value=1.0,
                 default_value=0.0,
                 value=0.0,
-                apply_callback=self.apply_brightness
+                apply_callback=self.apply_brightness,
             ),
             FloatSetting(
                 id="contrast",
@@ -262,7 +320,7 @@ class ScannerGui:
                 max_value=2.0,
                 default_value=1.0,
                 value=1.0,
-                apply_callback=self.apply_contrast
+                apply_callback=self.apply_contrast,
             ),
             FloatSetting(
                 id="exposure",
@@ -271,7 +329,7 @@ class ScannerGui:
                 max_value=8.0,
                 default_value=0.0,
                 value=0.0,
-                apply_callback=self.apply_exposure
+                apply_callback=self.apply_exposure,
             ),
             FloatSetting(
                 id="gain",
@@ -291,7 +349,9 @@ class ScannerGui:
                 max_value=1,
                 default_value=1,
                 value=1,
-                apply_callback=lambda v: self.picam2.set_controls({"AeEnable": bool(v)}),
+                apply_callback=lambda v: self.picam2.set_controls(
+                    {"AeEnable": bool(v)}
+                ),
                 step=1,
             ),
             FloatSetting(
@@ -301,7 +361,7 @@ class ScannerGui:
                 max_value=16.0,
                 default_value=0.0,
                 value=0.0,
-                apply_callback=self.apply_sharpness
+                apply_callback=self.apply_sharpness,
             ),
             GroupSetting(
                 id="led",
@@ -351,7 +411,7 @@ class ScannerGui:
                         apply_callback=self.apply_led(2),
                         step=5,
                     ),
-                ]
+                ],
             ),
             IntSetting(
                 id="tgt_width",
@@ -381,7 +441,9 @@ class ScannerGui:
 
         # Font for settings
         self.font = ImageFont.truetype(self.regular_font_name, self.regular_font_size)
-        self.tb_font = ImageFont.truetype(self.toolbar_font_name, self.toolbar_font_size)
+        self.tb_font = ImageFont.truetype(
+            self.toolbar_font_name, self.toolbar_font_size
+        )
         logger.debug("Font loaded")
 
         tones = [523, 659, 784, 1047]
@@ -395,15 +457,26 @@ class ScannerGui:
         self.running = True
 
         self.barcode_queue = queue.Queue()
-        self.hid_thread = threading.Thread(target=self.hid_sender_thread, args=(self.barcode_queue,))
+        self.hid_thread = threading.Thread(
+            target=self.hid_sender_thread, args=(self.barcode_queue,)
+        )
         self.hid_thread.start()
-        self.hid_conn_check_thread = threading.Thread(target=self.hid_connection_check, args=(self.hid_udc,))
+        self.hid_conn_check_thread = threading.Thread(
+            target=self.hid_connection_check, args=(self.hid_udc,)
+        )
         self.hid_conn_check_thread.start()
+
+        # before display thread
+        if self.vnc_enable:
+            self.vnc_image = Image.new("RGB", (self.display.width, self.display.height))
+            self.vnc_thread = threading.Thread(target=self.vnc_server_thread)
+            self.vnc_thread.start()
 
         self.image_thread = threading.Thread(target=self.image_update_thread)
         self.display_thread = threading.Thread(target=self.display_update_thread)
         self.image_thread.start()
         self.display_thread.start()
+
         logger.info("Threads started")
 
     @property
@@ -419,9 +492,8 @@ class ScannerGui:
             default_value="",
             value="",
             apply_callback=lambda v: None,
-            options=[""]
+            options=[""],
         )
-
 
     def tone(self, notes: list[tuple[int, float]]):
         def target():
@@ -431,6 +503,7 @@ class ScannerGui:
                 self.buzzer.value = 0.5
                 time.sleep(duration)
             self.buzzer.value = 0
+
         threading.Thread(target=target, daemon=True, name="TonePlayer").start()
 
     def apply_connection(self, value: str):
@@ -481,8 +554,9 @@ class ScannerGui:
             self.led_rgb[index] = value
             self.led.fill(self.led_rgb)
             self.led.write()
+
         return updater
-    
+
     def flatten_settings(self, settings):
         flat = []
         for s in settings:
@@ -491,7 +565,6 @@ class ScannerGui:
             else:
                 flat.append(s)
         return flat
-
 
     def load_settings(self):
         """Load settings from JSON file."""
@@ -511,12 +584,15 @@ class ScannerGui:
         except Exception as e:
             logger.error(f"Error loading settings: {e}")
 
-
     def save_settings(self):
         """Save settings to JSON file."""
         try:
             with open("settings.json", "w") as f:
-                json.dump([s.to_dict() for s in self.flatten_settings(self.settings)], f, indent=2)
+                json.dump(
+                    [s.to_dict() for s in self.flatten_settings(self.settings)],
+                    f,
+                    indent=2,
+                )
             logger.debug("Settings saved")
         except Exception as e:
             logger.exception(e)
@@ -552,14 +628,24 @@ class ScannerGui:
 
                 if self.active_setting is None:
                     # Not editing – scroll cursor
-                    self.settings_index = max(0, min(len(visible) - 1, self.settings_index + delta))
+                    self.settings_index = max(
+                        0, min(len(visible) - 1, self.settings_index + delta)
+                    )
                 else:
                     # Editing active setting – change value
                     s = self.active_setting
                     if isinstance(s, FloatSetting):
-                        s.value = max(s.min_value, min(s.max_value, round(s.value + delta * s.step, s.precision)))
+                        s.value = max(
+                            s.min_value,
+                            min(
+                                s.max_value,
+                                round(s.value + delta * s.step, s.precision),
+                            ),
+                        )
                     elif isinstance(s, IntSetting):
-                        s.value = max(s.min_value, min(s.max_value, s.value + delta * s.step))
+                        s.value = max(
+                            s.min_value, min(s.max_value, s.value + delta * s.step)
+                        )
                     elif isinstance(s, StringOptionSetting):
                         idx = s.options.index(s.value)
                         idx = (idx + delta) % len(s.options)
@@ -577,7 +663,9 @@ class ScannerGui:
         if self.button_press_time:
             now = time.time()
             short_press = (now - self.button_press_time) < self.encoder_button.hold_time
-            long_press = (now - self.button_press_time) > self.encoder_button.hold_time and self.encoder_button.is_held
+            long_press = (
+                now - self.button_press_time
+            ) > self.encoder_button.hold_time and self.encoder_button.is_held
 
             if short_press and not self.encoder_button.is_active:
                 # Short press
@@ -631,7 +719,6 @@ class ScannerGui:
                     logger.info(f"State changed to {self.state}")
                 self.button_press_time = None
 
-
     def on_trigger_press(self):
         logger.debug("Trigger pressed")
         if self.state == UIState.IDLE:
@@ -663,16 +750,47 @@ class ScannerGui:
             self.udc_connected = not read_udc_gadget_suspended(udc_path)
             time.sleep(0.5)
 
+    def vnc_server_thread(self):
+        vnc_config = VNCConfig(
+            vnc_password=self.vnc_password,
+            win_title=self.vnc_title,
+        )
+
+        sockServer = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        sockServer.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        sockServer.bind((self.vnc_bind, self.vnc_port))
+
+        logger.debug(
+            "VNC server started"
+        )
+        while True:
+            sockServer.listen(4)
+            (conn, (ip, port)) = sockServer.accept()
+
+            def image_source():
+                return self.vnc_image
+
+            newthread = VNCClientThread(
+                sock=conn,
+                image_source=image_source,
+                ip=ip,
+                port=port,
+                vnc_config=vnc_config,
+            )
+            newthread.daemon = True
+            newthread.start()
+
     def image_update_thread(self):
         """Simulate image updates with random colors."""
         while self.running:
-
             pixels = self.picam2.capture_array()
             image = Image.fromarray(pixels)
 
             # Resize camera image to fit the bottom of the display, leaving 10px at the top for the toolbar
             vf_height = self.display.height - self.toolbar_height
-            vf_image = image.resize((self.display.width, vf_height), Image.Resampling.NEAREST)
+            vf_image = image.resize(
+                (self.display.width, vf_height), Image.Resampling.NEAREST
+            )
             # Create a new blank image for the full display
             full_img = Image.new("RGB", (self.display.width, self.display.height))
             # Paste the viewfinder at the bottom (y=toolbar height)
@@ -690,7 +808,6 @@ class ScannerGui:
 
                 y0_disp_vf = (vf_height - self.target_height) // 2
                 y0_disp = self.toolbar_height + y0_disp_vf
-                y1_disp = y0_disp + self.target_height
                 x0_disp = (disp_w - self.target_width) // 2
                 x1_disp = x0_disp + self.target_width
 
@@ -710,19 +827,33 @@ class ScannerGui:
 
                 if self.barcodes:
                     self.state = UIState.IDLE
-                    self.tone([(4000, 0.1), (3000, 0.1)])  # Play a tone for successful scan
+                    self.tone(
+                        [(4000, 0.1), (3000, 0.1)]
+                    )  # Play a tone for successful scan
                     logger.info(f"Found {len(self.barcodes)} barcodes")
 
                 # determine which barcode is closest to the center of the target rectangle
                 if self.barcodes:
-                    target_center_disp = (x0_disp + self.target_width // 2, y0_disp + self.target_height // 2)
+                    target_center_disp = (
+                        x0_disp + self.target_width // 2,
+                        y0_disp + self.target_height // 2,
+                    )
+
                     def rect_center(rect):
-                        return (rect.left + rect.width // 2, rect.top + rect.height // 2)
+                        return (
+                            rect.left + rect.width // 2,
+                            rect.top + rect.height // 2,
+                        )
+
                     closest_barcode = min(
                         self.barcodes,
-                        key=lambda b: (rect_center(b.rect)[0] - target_center_disp[0]) ** 2 + (rect_center(b.rect)[1] - target_center_disp[1]) ** 2
+                        key=lambda b: (rect_center(b.rect)[0] - target_center_disp[0])
+                        ** 2
+                        + (rect_center(b.rect)[1] - target_center_disp[1]) ** 2,
                     )
-                    logger.info(f"Closest barcode: {closest_barcode.data.decode('utf-8')} at {closest_barcode.rect}")
+                    logger.info(
+                        f"Closest barcode: {closest_barcode.data.decode('utf-8')} at {closest_barcode.rect}"
+                    )
                     barcode_str = closest_barcode.data.decode("utf-8")
                     self.barcode_queue.put(barcode_str)
 
@@ -741,13 +872,15 @@ class ScannerGui:
                     disp_by1 = int(disp_by0 + bh * scale_y_disp)
 
                     draw = ImageDraw.Draw(self.viewfinder)
-                    draw.rectangle([disp_bx0, disp_by0, disp_bx1, disp_by1], fill="lime", width=3)
+                    draw.rectangle(
+                        [disp_bx0, disp_by0, disp_bx1, disp_by1], fill="lime", width=3
+                    )
 
     def get_visible_menu_items(self, menu_list, current_index, visible_count=2):
         """
         Get up to visible_count menu items centered around current_index,
         without wrapping around.
-        
+
         Returns:
             list of (index, item): Actual indices with corresponding menu items.
         """
@@ -775,8 +908,6 @@ class ScannerGui:
 
         return [(i, menu_list[i]) for i in range(start, end)]
 
-
-
     def display_update_thread(self):
         """Update display at 25 FPS."""
         target_fps = 15
@@ -789,7 +920,9 @@ class ScannerGui:
                 draw = ImageDraw.Draw(img)
 
                 # draw toolbar
-                draw.rectangle((0, 0, self.display.width, self.toolbar_height), fill="black")
+                draw.rectangle(
+                    (0, 0, self.display.width, self.toolbar_height), fill="black"
+                )
                 # Center toolbar text vertically
                 state_text = f"State: {self.state.value}"
                 text_bbox = self.tb_font.getbbox(state_text)
@@ -804,12 +937,32 @@ class ScannerGui:
                 if connection and connection.value == "USB":
                     conn_text = f"Conn: {'OK' if self.udc_connected else 'NO'}"
                     text_bbox = self.tb_font.getbbox(conn_text)
-                    draw.text((self.display.width - text_bbox[2] - 10, (self.toolbar_height - text_bbox[3] + text_bbox[1]) // 2), conn_text, font=self.tb_font, fill="green" if self.udc_connected else "red")
+                    draw.text(
+                        (
+                            self.display.width - text_bbox[2] - 10,
+                            (self.toolbar_height - text_bbox[3] + text_bbox[1]) // 2,
+                        ),
+                        conn_text,
+                        font=self.tb_font,
+                        fill="green" if self.udc_connected else "red",
+                    )
 
-                if self.state in [UIState.IDLE, UIState.SCAN, UIState.TARGET_ADJUST_W, UIState.TARGET_ADJUST_H]:
+                if self.state in [
+                    UIState.IDLE,
+                    UIState.SCAN,
+                    UIState.TARGET_ADJUST_W,
+                    UIState.TARGET_ADJUST_H,
+                ]:
                     # Draw centered target rectangle
                     x0 = (self.display.width - self.target_width) // 2
-                    y0 = self.toolbar_height + ((self.display.height - self.toolbar_height) - self.target_height) // 2
+                    y0 = (
+                        self.toolbar_height
+                        + (
+                            (self.display.height - self.toolbar_height)
+                            - self.target_height
+                        )
+                        // 2
+                    )
                     x1 = x0 + self.target_width
                     y1 = y0 + self.target_height
 
@@ -822,18 +975,46 @@ class ScannerGui:
                             color = "yellow"
                     draw.rectangle((x0, y0, x1, y1), outline=color, width=3)
                     # draw crosshair
-                    draw.line((x0 + self.target_width // 2, y0, x0 + self.target_width // 2, y1), fill=color, width=1)
-                    draw.line((x0, y0 + self.target_height // 2, x1, y0 + self.target_height // 2), fill=color, width=1)
+                    draw.line(
+                        (
+                            x0 + self.target_width // 2,
+                            y0,
+                            x0 + self.target_width // 2,
+                            y1,
+                        ),
+                        fill=color,
+                        width=1,
+                    )
+                    draw.line(
+                        (
+                            x0,
+                            y0 + self.target_height // 2,
+                            x1,
+                            y0 + self.target_height // 2,
+                        ),
+                        fill=color,
+                        width=1,
+                    )
                 elif self.state == UIState.SETTINGS:
                     # Draw settings menu in bottom 120px
                     overlay = Image.new("RGBA", self.viewfinder.size, (0, 0, 0, 0))
                     draw_overlay = ImageDraw.Draw(overlay)
 
-                    draw_overlay.rectangle((0, self.display.height // 1.4, self.display.width, self.display.height), fill=(0, 0, 0, 200))
+                    draw_overlay.rectangle(
+                        (
+                            0,
+                            self.display.height // 1.4,
+                            self.display.width,
+                            self.display.height,
+                        ),
+                        fill=(0, 0, 0, 200),
+                    )
                     with self.settings_lock:
                         visible_count = 2
-                        visible_settings = self.get_visible_menu_items(self.visible_settings, self.settings_index, visible_count=2)
-                        
+                        visible_settings = self.get_visible_menu_items(
+                            self.visible_settings, self.settings_index, visible_count=2
+                        )
+
                         # Draw setting text
                         for draw_index, (i, setting) in enumerate(visible_settings):
                             color = "white"
@@ -850,13 +1031,20 @@ class ScannerGui:
                             elif isinstance(setting, FloatSetting):
                                 state_text = f"{setting.name}: {round(setting.value, setting.precision)}{setting.suffix}"
                             elif isinstance(setting, IntSetting):
-                                state_text = f"{setting.name}: {setting.value}{setting.suffix}"
+                                state_text = (
+                                    f"{setting.name}: {setting.value}{setting.suffix}"
+                                )
                             elif isinstance(setting, StringOptionSetting):
                                 state_text = f"{setting.name}: {setting.value}"
                             else:
                                 logger.error(f"Unrecognized setting, {setting}")
                                 state_text = "ERROR"
-                            draw_overlay.text((10, self.display.height // 1.4 + 10 + draw_index * 30), state_text, font=self.font, fill=color)
+                            draw_overlay.text(
+                                (10, self.display.height // 1.4 + 10 + draw_index * 30),
+                                state_text,
+                                font=self.font,
+                                fill=color,
+                            )
 
                         # Draw scroll indicator
                         total = len(self.visible_settings)
@@ -866,22 +1054,36 @@ class ScannerGui:
                             scrollbar_height = scrollbar_bottom - scrollbar_top
 
                             track_height = scrollbar_height
-                            thumb_height = max(10, int(track_height * (visible_count / total)))
+                            thumb_height = max(
+                                10, int(track_height * (visible_count / total))
+                            )
 
                             # Position of thumb (top-aligned proportional to index)
                             max_scroll = total - visible_count
-                            scroll_pos = min(max(self.settings_index - (visible_count // 2), 0), max_scroll)
-                            scroll_ratio = scroll_pos / max_scroll if max_scroll > 0 else 0
-                            thumb_top = scrollbar_top + int((track_height - thumb_height) * scroll_ratio)
+                            scroll_pos = min(
+                                max(self.settings_index - (visible_count // 2), 0),
+                                max_scroll,
+                            )
+                            scroll_ratio = (
+                                scroll_pos / max_scroll if max_scroll > 0 else 0
+                            )
+                            thumb_top = scrollbar_top + int(
+                                (track_height - thumb_height) * scroll_ratio
+                            )
                             thumb_bottom = thumb_top + thumb_height
 
                             # Draw the thumb on the far right
-                            draw_overlay.rectangle((230, thumb_top, 235, thumb_bottom), fill="gray")
+                            draw_overlay.rectangle(
+                                (230, thumb_top, 235, thumb_bottom), fill="gray"
+                            )
 
-                        img = Image.alpha_composite(img.convert("RGBA"), overlay).convert("RGB")
-
+                        img = Image.alpha_composite(
+                            img.convert("RGBA"), overlay
+                        ).convert("RGB")
 
             # Update display
+            if self.vnc_enable:
+                self.vnc_image = img.copy()
             self.display.image(img)
             # logger.debug("Display updated")
 
@@ -889,7 +1091,7 @@ class ScannerGui:
             elapsed = time.time() - start_time
             sleep_time = max(0, frame_time - elapsed)
             time.sleep(sleep_time)
-            # logger.debug(f"FPS: {1.0 / (time.time() - start_time):.2f}")
+            logger.trace(f"FPS: {1.0 / (time.time() - start_time):.2f}")
 
     def run(self):
         """Main loop for button handling."""
@@ -904,14 +1106,21 @@ class ScannerGui:
             self.image_thread.join()
             self.display_thread.join()
             logger.info("Threads stopped")
-            
-            red_image = Image.new("RGB", (self.display.width, self.display.height), "red")
+
+            red_image = Image.new(
+                "RGB", (self.display.width, self.display.height), "red"
+            )
             draw = ImageDraw.Draw(red_image)
-            draw.line((0, 0, self.display.width, self.display.height), fill="white", width=10)
-            draw.line((self.display.width, 0, 0, self.display.height), fill="white", width=10)
+            draw.line(
+                (0, 0, self.display.width, self.display.height), fill="white", width=10
+            )
+            draw.line(
+                (self.display.width, 0, 0, self.display.height), fill="white", width=10
+            )
             self.display.image(red_image)
             self.led.fill((0, 0, 0))
             self.led.show()
+
 
 if __name__ == "__main__":
     gui = ScannerGui()

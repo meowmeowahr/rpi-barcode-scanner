@@ -21,10 +21,7 @@ class AbstractSetting(ABC):
 
     def to_dict(self):
         """Convert to dict for JSON serialization, excluding callback."""
-        d = {
-            "id": self.id,
-            "value": self.value
-        }
+        d = {"id": self.id, "value": self.value}
         return d
 
     @classmethod
@@ -32,7 +29,7 @@ class AbstractSetting(ABC):
         """Create Setting from dict, reattaching callback."""
         data["apply_callback"] = apply_callback
         return cls(**data)
-    
+
 
 @dataclass
 class FloatSetting(AbstractSetting):
@@ -48,6 +45,7 @@ class FloatSetting(AbstractSetting):
     suffix: str = ""
     only_with: str | None = None
 
+
 @dataclass
 class IntSetting(AbstractSetting):
     id: str
@@ -61,6 +59,7 @@ class IntSetting(AbstractSetting):
     suffix: str = ""
     only_with: str | None = None
 
+
 @dataclass
 class StringOptionSetting(AbstractSetting):
     id: str
@@ -71,6 +70,7 @@ class StringOptionSetting(AbstractSetting):
     apply_callback: Callable[[str], None]
     suffix: str = ""
     only_with: str | None = None
+
 
 @dataclass
 class GroupSetting(AbstractSetting):
