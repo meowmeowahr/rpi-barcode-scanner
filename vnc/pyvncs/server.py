@@ -16,7 +16,6 @@
 # along with this program. If not, see <http://www.gnu.org/licenses/>.
 
 import struct
-from time import sleep
 from typing import Callable
 from PIL import Image, ImageChops
 
@@ -304,6 +303,8 @@ class VNCServer:
 
         lastshot = rectangle
         sendbuff = bytearray()
+        if not self.encoding_object:
+            return False
         self.encoding_object.firstUpdateSent = False
 
         if self.framebuffer is not None and incremental == 1:
@@ -311,7 +312,6 @@ class VNCServer:
             if diff.getbbox() is None:
                 rectangles = 0
                 sendbuff.extend(struct.pack("!BxH", 0, rectangles))
-                sleep(0.05)
                 try:
                     sock.sendall(sendbuff)
                 except (ConnectionResetError, BrokenPipeError):

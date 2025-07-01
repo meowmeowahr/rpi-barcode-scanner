@@ -16,7 +16,7 @@ def read_udc_gadget_suspended(udc_addr: str) -> bool:
             status = f.read().strip()
         return status == "1"
     except FileNotFoundError:
-        return False
+        return True
     except Exception as e:
         logger.error(f"Error reading UDC gadget suspended status: {e}")
         return False

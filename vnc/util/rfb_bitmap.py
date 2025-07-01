@@ -8,17 +8,33 @@ __all__ = ["RfbBitmap"]
 
 class RfbBitmap:
     def __init__(self):
-        self.bpp = None
-        self.depth = None
-        self.truecolor = None
-        self.primaryOrder = "rgb"
-        self.dither = False
-        self.red_shift = None
-        self.green_shift = None
-        self.blue_shift = None
-        self.bigendian = 0
+        self.bpp: int | None = None
+        self.depth: int | None = None
+        self.truecolor: int | None = None
+        self.primaryOrder: str = "rgb"
+        self.dither: bool = False
+        self.red_shift: int | None = None
+        self.green_shift: int | None = None
+        self.blue_shift: int | None = None
+        self.bigendian: int = 0
 
     def get_bitmap(self, rectangle):
+        if self.bpp is None:
+            logger.error("BPP is not set")
+            return None
+        elif self.depth is None:
+            logger.error("Depth is not set")
+            return None
+        elif self.red_shift is None:
+            logger.error("Red shift is not set")
+            return None
+        elif self.green_shift is None:
+            logger.error("Green shift is not set")
+            return None
+        elif self.blue_shift is None:
+            logger.error("Blue shift is not set")
+            return None
+
         if self.bpp == 32:
             redBits = 8
             greenBits = 8

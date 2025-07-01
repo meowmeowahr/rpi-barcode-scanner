@@ -57,7 +57,7 @@ class Keyboard:
             pkgutil.get_data(__name__, f"keymaps/{language}.json").decode()
         )
 
-    def type(self, text, delay=0):
+    def type(self, text, delay: float = 0):
         for c in text:
             key_map = self.layout["Mapping"][c]
             key_map = key_map[0]

@@ -43,7 +43,6 @@ class FloatSetting(AbstractSetting):
     precision: int = 1
     step: float = 0.1
     suffix: str = ""
-    only_with: str | None = None
 
 
 @dataclass
@@ -57,7 +56,6 @@ class IntSetting(AbstractSetting):
     apply_callback: Callable
     step: int = 5
     suffix: str = ""
-    only_with: str | None = None
 
 
 @dataclass
@@ -69,8 +67,19 @@ class StringOptionSetting(AbstractSetting):
     value: str
     apply_callback: Callable[[str], None]
     suffix: str = ""
-    only_with: str | None = None
 
+@dataclass
+class ButtonMenuSetting(AbstractSetting):
+    id: str
+    name: str
+    default_value: None
+    value: None
+    apply_callback: Callable[[], Any]
+
+    def apply(self):
+        """Apply the setting by calling its callback."""
+        logger.debug(f"Applying setting {self.id}: {self.value}")
+        self.apply_callback()
 
 @dataclass
 class GroupSetting(AbstractSetting):
@@ -88,3 +97,35 @@ class GroupSetting(AbstractSetting):
             "name": self.name,
             "children": [child.to_dict() for child in self.children],
         }
+
+def get_visible_menu_items(menu_list, current_index, visible_count=2):
+        """
+        Get up to visible_count menu items centered around current_index,
+        without wrapping around.
+
+        Returns:
+            list of (index, item): Actual indices with corresponding menu items.
+        """
+        if not menu_list:
+            return []
+
+        total = len(menu_list)
+        visible_count = min(visible_count, total)
+
+        # Clamp current index to valid range
+        current_index = max(0, min(current_index, total - 1))
+
+        # Calculate bounds for visible items
+        half = visible_count // 2
+        start = current_index - half
+        end = start + visible_count
+
+        # Clamp window to list bounds
+        if start < 0:
+            start = 0
+            end = visible_count
+        if end > total:
+            end = total
+            start = total - visible_count
+
+        return [(i, menu_list[i]) for i in range(start, end)]

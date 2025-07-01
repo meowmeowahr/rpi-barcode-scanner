@@ -1,4 +1,4 @@
-The contents of the `fasthid` directory contain parts of [`zero-hid`](https://github.com/thewh1teagle/zero-hid), under the LGPLv3 License.
+The contents of the `vnc` directory contain parts of [`pyvncs`](https://github.com/radixcl/pyvncs), under the LGPLv3 License.
 
 Everything in this directory is LGPLv3 licensd.
 
