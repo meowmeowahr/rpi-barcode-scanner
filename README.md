@@ -230,3 +230,9 @@ A:
     ```log
     scanner                          RUNNING   pid 2469, uptime 0:02:43
     ```
+
+## Licenses
+
+This project is licensed under the MIT License.
+
+The contents of the `fasthid` and `vnc` directories are licensed under the LGPLv3.
