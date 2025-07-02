@@ -19,9 +19,9 @@ The 3D Printed Scanner is a modular and compact handheld scanner housing.
 
 * [Adafruit 1.54in ST7789 Display](https://www.adafruit.com/product/3787)
 
-    > [!WARNING]
-    > The 3D models are made for the pre-July 24, 2019 displays.
-    > Slight modifications are required for the newer models.
+> [!WARNING]
+> The 3D models are made for the pre-July 24, 2019 displays.
+> Slight modifications are required for the newer models.
 
     <img src="https://cdn-shop.adafruit.com/970x728/3787-13.jpg" alt="Product photo" width=120></img>
 
@@ -94,8 +94,8 @@ The 3D Printed Scanner is a modular and compact handheld scanner housing.
 
 * Install USB Gadget Driver
 
-    > [!IMPORTANT]
-    > A reboot is required after this step
+> [!IMPORTANT]
+> A reboot is required after this step
 
     ```console
     git clone https://github.com/thewh1teagle/zero-hid
@@ -162,12 +162,12 @@ The 3D Printed Scanner is a modular and compact handheld scanner housing.
 
     Note down this value, and set it in the configuration section, `hid/udc`
 
-    > [!NOTE]
-    > If there are multiple device addresses, you will need to trial-and-error them.
-    > Try each, and restart the scanner.
-    > The connection status in the top left should reflect if the USB-HID interface is connected.
-    >
-    > You can restart the scanner process with `sudo supervisorctl restart scanner`
+> [!NOTE]
+> If there are multiple device addresses, you will need to trial-and-error them.
+> Try each, and restart the scanner.
+> The connection status in the top left should reflect if the USB-HID interface is connected.
+>
+> You can restart the scanner process with `sudo supervisorctl restart scanner`
 
 * Configure Autostart
 
@@ -178,8 +178,8 @@ The 3D Printed Scanner is a modular and compact handheld scanner housing.
 
     Edit the `/etc/supervisor/conf.d/barcode-scanner.conf` file to contain the following:
 
-    > [!NOTE]
-    > Replace /home/scanner with your user path
+> [!NOTE]
+> Replace /home/scanner with your user path
 
     ```conf
     [program:scanner]
