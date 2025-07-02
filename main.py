@@ -426,6 +426,18 @@ class ScannerGui:
                         step=0.01,
                         suffix="s",
                         apply_callback=self.hid.apply_delay,
+                    ),
+                    StringOptionSetting(
+                        id="hid_ending",
+                        name="Scan Ending",
+                        default_value="RETURN",
+                        value="RETURN",
+                        apply_callback=self.hid.apply_ending,
+                        options=[
+                            "RETURN",
+                            "TAB",
+                            "NONE"
+                        ]
                     )
                 ]
             ),

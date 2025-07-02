@@ -15,6 +15,7 @@ class HIDInterface:
 
         self.udc_connected = False
         self.hid_delay = 0.0
+        self.ending = "\n"
         self.barcode_queue = queue.Queue()
 
         self.hid_thread = threading.Thread(
@@ -35,7 +36,7 @@ class HIDInterface:
                 connection = self.check_enabled()
                 if connection:
                     logger.debug(f"Sending barcode over HID: {code}")
-                    kb.type(code, self.hid_delay)
+                    kb.type(code+self.ending, self.hid_delay)
             except queue.Empty:
                 continue
 
@@ -46,6 +47,15 @@ class HIDInterface:
 
     def apply_delay(self, delay: float):
         self.hid_delay = delay
+
+    def apply_ending(self, ending: str):
+        match ending:
+            case "RETURN":
+                self.ending = "\n"
+            case "TAB":
+                self.ending = "\t"
+            case _:
+                self.ending = ""
 
     def send(self, data: str):
         self.barcode_queue.put_nowait(data)

@@ -16,7 +16,7 @@ from state import UIState
 from ui import UserInterface
 
 if TYPE_CHECKING:
-    from guifw import ScannerGui
+    from main import ScannerGui
 
 
 class UserInterfaceInputController:

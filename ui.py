@@ -19,7 +19,7 @@ from settings import (
 from state import UIState
 
 if TYPE_CHECKING:
-    from guifw import ScannerGui
+    from main import ScannerGui
 
 
 @dataclass
