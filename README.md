@@ -97,70 +97,70 @@ The 3D Printed Scanner is a modular and compact handheld scanner housing.
 > [!IMPORTANT]
 > A reboot is required after this step
 
-    ```console
-    git clone https://github.com/thewh1teagle/zero-hid
-    cd zero-hid/usb_gadget
-    sudo ./installer
-    sudo reboot
-    ```
+```console
+git clone https://github.com/thewh1teagle/zero-hid
+cd zero-hid/usb_gadget
+sudo ./installer
+sudo reboot
+```
 
 * Clone Repo
 
-    ```console
-    git clone https://github.com/meowmeowahr/rpi-barcode-scanner && cd rpi-barcode-scanner
-    ```
+```console
+git clone https://github.com/meowmeowahr/rpi-barcode-scanner && cd rpi-barcode-scanner
+```
 
 * Create Environment
 
-    ```console
-    python3 -m venv .venv
-    source ./.venv/bin/activate
-    pip install uv
-    uv sync
-    ```
+```console
+python3 -m venv .venv
+source ./.venv/bin/activate
+pip install uv
+uv sync
+```
 
 * Link pykms and libcamera
 
-    ```console
-    ln -s /usr/lib/python3/dist-packages/pykms ./.venv/lib/python3.11/site-packages
-    ln -s /usr/lib/python3/dist-packages/libcamera ./.venv/lib/python3.11/site-packages
-    ```
+```console
+ln -s /usr/lib/python3/dist-packages/pykms ./.venv/lib/python3.11/site-packages
+ln -s /usr/lib/python3/dist-packages/libcamera ./.venv/lib/python3.11/site-packages
+```
 
 * (Optional) Test Camera
 
-    ```console
-    libcamera-hello
-    ```
+```console
+libcamera-hello
+```
 
-    You should see output containing something like the following
+You should see output containing something like the following
 
-    ```log
-    [1:10:17.433392327] [2017]  INFO Camera camera_manager.cpp:326 libcamera v0.5.0+59-d83ff0a4
-    [1:10:17.500249834] [2020]  WARN RPiSdn sdn.cpp:40 Using legacy SDN tuning - please consider moving SDN inside rpi.denoise
-    [1:10:17.506046852] [2020]  INFO RPI vc4.cpp:447 Registered camera /base/soc/i2c0mux/i2c@1/ov5647@36 to Unicam device /dev/media3 and ISP device /dev/media0
-    ```
+```log
+[1:10:17.433392327] [2017]  INFO Camera camera_manager.cpp:326 libcamera v0.5.0+59-d83ff0a4
+[1:10:17.500249834] [2020]  WARN RPiSdn sdn.cpp:40 Using legacy SDN tuning - please consider moving SDN inside rpi.denoise
+[1:10:17.506046852] [2020]  INFO RPI vc4.cpp:447 Registered camera /base/soc/i2c0mux/i2c@1/ov5647@36 to Unicam device /dev/media3 and ISP device /dev/media0
+```
 
 * Create the configuration
 
-    We will copy the example configuration file to the home directory, where it will be detected by the autostart script.
+We will copy the example configuration file to the home directory, where it will be detected by the autostart script.
 
-    ```console
-    cp config.yml ~/config.yml
-    ```
+```console
+cp config.yml ~/config.yml
+```
 
-    Get the UDC device address
+Get the UDC device address
 
-    ```console
-    ls /sys/class/udc
-    ```
+```console
+ls /sys/class/udc
+```
 
-    You should get something like the following
+You should get something like the following
 
-    ```
-    3f980000.usb
-    ```
+```
+3f980000.usb
+```
 
-    Note down this value, and set it in the configuration section, `hid/udc`
+Note down this value, and set it in the configuration section, `hid/udc`
 
 > [!NOTE]
 > If there are multiple device addresses, you will need to trial-and-error them.
@@ -171,34 +171,34 @@ The 3D Printed Scanner is a modular and compact handheld scanner housing.
 
 * Configure Autostart
 
-    ```console
-    sudo systemctl enable supervisor
-    sudo systemctl start supervisors
-    ```
+```console
+sudo systemctl enable supervisor
+sudo systemctl start supervisors
+```
 
-    Edit the `/etc/supervisor/conf.d/barcode-scanner.conf` file to contain the following:
+Edit the `/etc/supervisor/conf.d/barcode-scanner.conf` file to contain the following:
 
 > [!NOTE]
 > Replace /home/scanner with your user path
 
-    ```conf
-    [program:scanner]
-    user=root
-    directory=/home/scanner
-    command=/home/scanner/rpi-barcode-scanner/.venv/bin/python /home/scanner/rpi-barcode-scanner/main.py
+```conf
+[program:scanner]
+user=root
+directory=/home/scanner
+command=/home/scanner/rpi-barcode-scanner/.venv/bin/python /home/scanner/rpi-barcode-scanner/main.py
 
-    autostart=true
-    autorestart=true
-    stdout_logfile=/var/log/barcode-scanner/stdout.log
-    stderr_logfile=/var/log/barcode-scanner/stderr.log
-    ```
+autostart=true
+autorestart=true
+stdout_logfile=/var/log/barcode-scanner/stdout.log
+stderr_logfile=/var/log/barcode-scanner/stderr.log
+```
 
-    Start the scanner
+Start the scanner
 
-    ```console
-    sudo mkdir /var/log/barcode-scanner
-    sudo supervisorctl start scanner
-    ```
+```console
+sudo mkdir /var/log/barcode-scanner
+sudo supervisorctl start scanner
+```
 
 ## Configuration
 
