@@ -19,9 +19,9 @@ The 3D Printed Scanner is a modular and compact handheld scanner housing.
 
 * [Adafruit 1.54in ST7789 Display](https://www.adafruit.com/product/3787)
 
-> [!WARNING]
-> The 3D models are made for the pre-July 24, 2019 displays.
-> Slight modifications are required for the newer models.
+    > [!WARNING]
+    > The 3D models are made for the pre-July 24, 2019 displays.
+    > Slight modifications are required for the newer models.
 
     <img src="https://cdn-shop.adafruit.com/970x728/3787-13.jpg" alt="Product photo" width=120></img>
 
