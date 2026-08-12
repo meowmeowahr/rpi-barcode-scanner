@@ -126,6 +126,19 @@ ln -s /usr/lib/python3/dist-packages/pykms ./.venv/lib/python3.11/site-packages
 ln -s /usr/lib/python3/dist-packages/libcamera ./.venv/lib/python3.11/site-packages
 ```
 
+* (Optional) Enable Bluetooth HID support
+
+The scanner can output scanned barcodes over Bluetooth Low Energy as a wireless HID keyboard.
+The Raspberry Pi Zero 2W has an onboard Bluetooth radio, so no extra hardware is required.
+
+```console
+sudo apt install bluez bluez-firmware pi-bluetooth
+```
+
+> [!NOTE]
+> HID over GATT requires the `bluetoothd` daemon to be running (`systemctl start bluetooth`).
+> The scanner registers its own HID GATT service, so no special BlueZ plugins are needed.
+
 * (Optional) Test Camera
 
 ```console
@@ -202,7 +215,26 @@ sudo supervisorctl start scanner
 
 ## Configuration
 
-tbd
+### Bluetooth HID Output
+
+To use the scanner as a Bluetooth keyboard instead of (or in addition to) a USB keyboard:
+
+1. Set the connection mode to `BT` in the Settings menu (Settings → Connection → BT), or change `default_value` in `main.py`.
+2. The scanner advertises itself as a Bluetooth keyboard with the name configured below.
+3. On the receiving device (phone, tablet, PC), scan for and pair with the device name.
+4. The toolbar shows `BT: OK` when a device is paired and connected.
+
+Bluetooth settings are configured in `config.yml`:
+
+```yaml
+bluetooth:
+  name: "Raspberry Pi Barcode Scanner"
+```
+
+> [!NOTE]
+> The Bluetooth radio is always advertised when the app runs, but scanned barcodes are only
+> sent over Bluetooth when the `Connection` setting is set to `BT`. The `BT: OK`/`BT: NO`
+> indicator in the toolbar reflects whether a Bluetooth client is currently connected.
 
 ## FAQ
 

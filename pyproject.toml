@@ -5,6 +5,7 @@ description = "Raspberry Pi Zero 2 Optical Barcode Scanner"
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
+    "bluez-peripheral>=0.1.7",
     "adafruit-circuitpython-neopixel>=6.3.17",
     "adafruit-circuitpython-rgb-display>=3.14.1",
     "elevate>=0.1.3",

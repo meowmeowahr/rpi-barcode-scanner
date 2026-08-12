@@ -47,6 +47,7 @@ class UiParams:
 @dataclass
 class ConnectionData:
     udc_connected: bool
+    bt_connected: bool = False
 
 
 class UserInterface:
@@ -108,7 +109,7 @@ class UserInterface:
         y = (ui_params.toolbar_height - text_height) // 2
         draw.text((10, y), state_text, font=self.tb_font, fill="white")
 
-        # draw right-aligned UDC text
+        # draw right-aligned connection status
         conn = next((s for s in settings if s.id == "connection"), None)
         if conn and conn.value == "USB":
             conn_text = f"Conn: {'OK' if connection.udc_connected else 'NO'}"
@@ -121,6 +122,18 @@ class UserInterface:
                 conn_text,
                 font=self.tb_font,
                 fill="green" if connection.udc_connected else "red",
+            )
+        elif conn and conn.value == "BT":
+            conn_text = f"BT: {'OK' if connection.bt_connected else 'NO'}"
+            text_bbox = self.tb_font.getbbox(conn_text)
+            draw.text(
+                (
+                    self.display.width - text_bbox[2] - 10,
+                    (ui_params.toolbar_height - text_bbox[3] + text_bbox[1]) // 2,
+                ),
+                conn_text,
+                font=self.tb_font,
+                fill="green" if connection.bt_connected else "red",
             )
 
         if state in [

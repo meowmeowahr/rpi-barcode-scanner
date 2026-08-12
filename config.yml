@@ -34,6 +34,9 @@ hid:
   udc: "3f980000.usb"
   path: "/dev/hidg0"
 
+bluetooth:
+  name: "Raspberry Pi Barcode Scanner"
+
 gui:
   toolbar_height: 30
   menu_items: 3 

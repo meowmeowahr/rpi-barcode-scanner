@@ -18,6 +18,7 @@ from picamera2 import Picamera2
 from pyzbar.pyzbar import decode
 
 from hid import HIDInterface
+from bt_hid import BluetoothHIDInterface
 from vnc.vncserver import VNCConfig
 
 from state import UIState
@@ -91,6 +92,7 @@ class ScannerGui:
 
         self.device_config = self.config.get("device", {})
         self.hid_config = self.config.get("hid", {})
+        self.bt_config = self.config.get("bluetooth", {})
         self.gui_config = self.config.get("gui", {})
 
         self.led_config = self.device_config.get("led", {})
@@ -152,6 +154,8 @@ class ScannerGui:
             )
         self.hid_udc = self.hid_config.get("udc", "3f980000.usb")
         self.hid_path = self.hid_config.get("path", "/dev/hidg0")
+
+        self.bt_name = self.bt_config.get("name", "Raspberry Pi Barcode Scanner")
 
         logger.debug("Loaded config")
 
@@ -225,17 +229,25 @@ class ScannerGui:
         # HID setup
         def check_connection():
             option = next((s for s in self.settings if s.id == "connection"))
-            return option and option.value == "USB"
-        self.hid = HIDInterface(self.hid_udc, self.hid_path, lambda: check_connection)
+            return bool(option) and option.value == "USB"
+        self.hid = HIDInterface(self.hid_udc, self.hid_path, check_connection)
+
+        # Bluetooth HID setup
+        def check_bt_connection():
+            option = next((s for s in self.settings if s.id == "connection"))
+            return bool(option) and option.value == "BT"
+
+        self.bt_hid = BluetoothHIDInterface(
+            name=self.bt_name, check_enabled=check_bt_connection
+        )
 
         # Settings setup
-        self.hid_thread: threading.Thread | None = None
         self.settings_lock = threading.Lock()
         self.settings = [
             StringOptionSetting(
                 id="connection",
                 name="Connection",
-                options=["USB", "NONE"],
+                options=["USB", "BT", "NONE"],
                 default_value="USB",
                 value="USB",
                 apply_callback=self.apply_connection,
@@ -512,12 +524,11 @@ class ScannerGui:
             return
         if option.value == "USB":
             self.hid.send(barcode)
+        elif option.value == "BT":
+            self.bt_hid.send(barcode)
 
     def apply_connection(self, value: str):
         logger.info(f"Connection set to {value}")
-        if value == "USB" and self.hid_thread and not self.hid_thread.is_alive():
-            self.hid_thread.start()
-            logger.debug("Restarted HID sender process")
 
     def apply_target_width(self, value: int):
         """Example callback for target width."""
@@ -686,7 +697,10 @@ class ScannerGui:
                 img = self.ui.draw(
                     self.viewfinder,
                     self.settings,
-                    ConnectionData(udc_connected=self.hid.udc_connected),
+                    ConnectionData(
+                        udc_connected=self.hid.udc_connected,
+                        bt_connected=self.bt_hid.connected,
+                    ),
                     UiParams(
                         toolbar_height=self.toolbar_height,
                         target_width=self.target_width,
