@@ -223,48 +223,32 @@ class BluetoothHIDInterface:
         )
         await advert.register(bus, adapter=adapter)
 
-        bus.add_message_handler(self._on_dbus_signal)
-        await self._add_connection_match(bus)
-
         sender_task = asyncio.create_task(self._sender_task())
         logger.info(f"Bluetooth HID keyboard '{self.name}' is now advertising")
 
         try:
             while self._running:
+                try:
+                    self.connected = await self._check_connections(bus)
+                except Exception as e:
+                    logger.trace(f"Failed to query Bluetooth connections: {e}")
                 await asyncio.sleep(1)
         finally:
             sender_task.cancel()
             await agent.unregister(bus)
 
-    async def _add_connection_match(self, bus):
-        introspection = await bus.introspect(
-            "org.freedesktop.DBus", "/org/freedesktop/DBus"
-        )
-        proxy = bus.get_proxy_object(
-            "org.freedesktop.DBus", "/org/freedesktop/DBus", introspection
-        )
-        interface = proxy.get_interface("org.freedesktop.DBus")
-        await interface.call_add_match(
-            "type='signal',sender='org.bluez',"
-            "interface='org.freedesktop.DBus.Properties',"
-            "member='PropertiesChanged',path_namespace='/org/bluez'"
-        )
-
-    def _on_dbus_signal(self, message):
-        if (
-            message.interface != "org.freedesktop.DBus.Properties"
-            or message.member != "PropertiesChanged"
-            or len(message.body) < 2
-        ):
-            return False
-        interface_name, changed, _invalidated = message.body
-        if interface_name != "org.bluez.Device1":
-            return False
-        if "Connected" in changed:
-            self.connected = bool(changed["Connected"].value)
-            logger.info(
-                f"Bluetooth client {'connected' if self.connected else 'disconnected'}"
-            )
+    async def _check_connections(self, bus) -> bool:
+        introspection = await bus.introspect("org.bluez", "/")
+        proxy = bus.get_proxy_object("org.bluez", "/", introspection)
+        manager = proxy.get_interface("org.freedesktop.DBus.ObjectManager")
+        objects = await manager.call_get_managed_objects()
+        for interfaces in objects.values():
+            device = interfaces.get("org.bluez.Device1")
+            if device is None:
+                continue
+            connected = device.get("Connected")
+            if connected is not None and connected.value:
+                return True
         return False
 
     async def _sender_task(self):

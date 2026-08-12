@@ -51,7 +51,7 @@ class UserInterfaceInputController:
         with self.ui.image_lock:
             if self.app.state == UIState.TARGET_ADJUST_W:
                 width = max(10, min(200, self.app.target_width + delta * 5))
-                for setting in self.settings:
+                for setting in self.app.flatten_settings(self.settings):
                     if setting.id == "tgt_width":
                         setting.value = width
                         setting.apply()
@@ -61,7 +61,7 @@ class UserInterfaceInputController:
                 logger.debug(f"Target width adjusted to {self.app.target_width}")
             elif self.app.state == UIState.TARGET_ADJUST_H:
                 height = max(10, min(200, self.app.target_height + delta * 5))
-                for setting in self.settings:
+                for setting in self.app.flatten_settings(self.settings):
                     if setting.id == "tgt_height":
                         setting.value = height
                         setting.apply()
